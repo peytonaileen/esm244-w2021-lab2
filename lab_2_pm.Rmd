@@ -1,0 +1,145 @@
+---
+title: "Lab 2 - PCA and Shiny Intro"
+author: "Peyton Moore"
+date: "1/12/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+
+library(tidyverse)
+library(janitor)
+library(here)
+
+
+# For Part 1 (PCA)
+library(ggfortify) # For PCA biplot
+library(palmerpenguins)
+
+# For Part 2 (ggplot customization)
+library(readxl)
+library(gghighlight) # For useful highlighting
+library(lubridate) # For easier dates & times
+library(plotly) # Interactive graphs
+
+# For Part 3 (compound figures)
+library(patchwork)
+```
+
+
+## Part 1L PCA with penguins
+
+```{r}
+penguins_pca <-  penguins %>% 
+  select(body_mass_g, ends_with("_mm")) %>% 
+  drop_na() %>% 
+  scale() %>% 
+  prcomp()
+
+penguins_pca$rotation
+
+
+penguin_complete <- penguins %>% 
+  drop_na(body_mass_g, ends_with("_mm"))
+
+autoplot(penguins_pca, 
+         data = penguin_complete, 
+         colour = 'species', 
+         loadings = TRUE, 
+         loadings.label  = TRUE)+
+  theme_minimal()
+
+
+```
+
+
+## Part 2: ggplot2 customization & reading in different file types 
+
+#### REad in an .xlsx file and do some wrangling
+
+```{r}
+fish_noaa <- read_excel(here("data", "foss_landings.xlsx")) %>% 
+  clean_names() %>% 
+  mutate(across(where(is.character), tolower)) %>% 
+  mutate(nmfs_name = str_sub(nmfs_name, end = -4)) %>% 
+  filter(confidentiality == "public")
+  
+  
+```
+
+Make a customized graph: 
+
+```{r}
+
+fish_plot <- ggplot(data = fish_noaa, aes(x = year, y = pounds))+
+  geom_line(aes(color = nmfs_name), show.legend = FALSE)+
+  theme_minimal()
+
+fish_plot
+
+ggplotly(fish_plot)
+
+
+## USe gg highlight to highlight certain series 
+
+ggplot(data = fish_noaa, aes(x = year, y = pounds, group = nmfs_name))+
+  geom_line()+
+  theme_minimal()+
+  gghighlight(nmfs_name  == "tunas")
+
+ggplot(data = fish_noaa, aes(x = year, y = pounds, group = nmfs_name))+
+  geom_line(aes(color = nmfs_name))+
+  theme_minimal()+
+  gghighlight(max(pounds)> 1e8)
+
+```
+
+
+#### REad in data from a URL, `lubridate()`, `mutate()`, make a graph with months in logical order 
+
+
+```{r}
+monroe_wt <- read_csv("https://data.bloomington.in.gov/dataset/2c81cfe3-62c2-46ed-8fcf-83c1880301d1/resource/13c8f7aa-af51-4008-80a9-56415c7c931e/download/mwtpdailyelectricitybclear.csv") %>% 
+  clean_names()
+
+
+```
+
+
+
+```{r}
+monroe_ts <- monroe_wt %>% 
+  mutate(date = mdy(date)) %>% 
+  mutate(record_month = month(date)) %>% 
+  mutate(month_name = month.abb[record_month]) %>% 
+  mutate(month_name = fct_reorder(month_name, record_month))
+
+
+ggplot(data = monroe_ts, aes(month_name, y = total_k_wh))+
+  geom_jitter()
+```
+
+### Part 3: Compound figures with `patchwork`
+
+
+```{r}
+graph_a <- ggplot(data = penguins, aes(x= body_mass_g, y = flipper_length_mm))+
+  geom_point()
+
+graph_b <-  ggplot(data = penguins, aes( x = species, y = flipper_length_mm))+
+  geom_jitter(aes(color = species), show.legend = FALSE)
+
+
+# Use | to put graphs side by side 
+# Use / to put graphs one over the other 
+
+graph_c <- (graph_a | graph_b)/ fish_plot & theme_dark()
+
+graph_c
+
+ggsave(here("fig", "graph_c_pm.png"), width = 5, height = 6)
+
+```
+
+
